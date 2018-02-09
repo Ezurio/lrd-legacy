@@ -294,7 +294,7 @@ ifrc_dhcp_client() {
   v=${vm//?/ -v} v=${v:-${mm:+-v}}
   # call a <client.sh> wrapper script in /etc/dhcp/..
   # assume the busybox-udhcpc if client not specified
-  /etc/dhcp/${client:-udhcpc}.sh $v ${qm:+-q} -i$dev $1; rv=$?
+  /etc/dhcp/${client:-udhcpc}.sh $v ${qm:+-q} -i$dev $1 2>>/tmp/ifrc/${dev}; rv=$?
   rmdir ${ifrc_Lfp}/$dev.dhcp 2>/dev/null
 
   # interrupt link-beat check, while if in-progress
