@@ -375,9 +375,6 @@ wifi_lock_wait() {
   mkdir -p /tmp/wifi^
 } 2>/dev/null
 
-# ensure this script is available as system command
-[ -x /sbin/wireless ] || ln -sf /etc/network/wireless.sh /sbin/wireless
-
 # parse cmdline flags
 while [ ${#1} -gt 1 ]
 do
