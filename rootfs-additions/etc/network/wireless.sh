@@ -1,6 +1,6 @@
 #!/usr/bin/env ash
 
-# Copyright (c) 2015, Laird
+# Copyright (c) 2018, Laird
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
 # copyright notice and this permission notice appear in all copies.
@@ -15,7 +15,7 @@
 # contact: ews-support@lairdtech.com
 
 # /etc/network/wireless.sh - driver-&-firmware configuration for wb45n/wb50n
-# 20120520/20160604
+# 20120520/20180522
 
 WIFI_PREFIX=wlan                              ## iface to be enumerated
 WIFI_DRIVER=ath6kl_sdio                       ## device driver "name"
@@ -70,7 +70,7 @@ wifi_status() {
   "\nProcesses related for ${WIFI_DRIVER}${WIFI_FIPS:+, w/fips}:\n  ...\r\c"
   top -bn1 \
   |sed -e '/sed/d;s/\(^....[^ ]\)\ \+[^ ]\+\ \+[^ ]\+\ \+\(.*\)/\1 \2/' \
-       -e '4h;/hostapd/H;/.[dp].supp/H;/event_m/H;/sdcu/H' \
+       -e '4h;/.[dp].supp/H;/event_m/H;/sdcu/H' \
        -e "/${module%%_*}"'/H;${x;p}' -n
 
   if wifi_queryinterface
@@ -237,41 +237,33 @@ wifi_start() {
   && hostapd=$( sed -n "${stanza}{/hostapd/{s/[ \t]*//;/^[^#]/{p;q}}}" $eni ) \
   && [ -n "$hostapd" ]
   then
-    if ! pidof hostapd >/dev/null \
-    && ! pidof sdcsupp >/dev/null
+    if ! pidof sdcsupp >/dev/null
     then
-      test -s "${cf:=${hostapd##* }}" \
-        || { msg "hostapd config file error"; return 1; }
-
-      if grep -q "^ssid=wb..n_id-not-set" $cf
+      # launch supplicant if exists and not already running
+      if test -e "$SDC_SUPP" && ! ps |grep -q "[ ]$SDC_SUPP" && let n=17
       then
-        wl_vei=${wl_mac#??:??:??}
-        msg "setting the hostapd ssid in $cf"
-        sed "/^ssid=wb..n/s/_.*/_${wl_vei//:}/" -i $cf && fsync $cf
-      fi
+        [ -f $supp_sd/pid ] \
+        && { msg "$supp_sd/pid exists"; return 1; }
 
-      $SDC_CLI radio_init_4_hostapd
-      # construct the hostapd invocation and execute (flags can be in /e/n/i)
-      #debug=-d                                   ## allow debug/err capture
-      #pf=-P$apd_sd/pid                            ## pid only if daemonized
-      hostapd=${hostapd/apd/apd $debug $pf}          ## insert extra options
-      hostapd=${hostapd/-B}                        ## do not allow daemonize
-      msg -n executing: $hostapd'  '
-      $hostapd 2>&1 &
-      #
-      await $apd_sd/$WIFI_DEV 200000
-      # check and store the process id
-      pidof hostapd 2>/dev/null >$apd_sd/pid \
-      || { msg ..error; return 2; }
-      msg .ok
-      hostapd=started
+        supp_opt=$WIFI_80211\ $flags\ $WIFI_FIPS
+        msg -n executing: $SDC_SUPP -i$WIFI_DEV $supp_opt -s'  '
+        #
+        $SDC_SUPP -i$WIFI_DEV $supp_opt -s >/dev/null 2>&1 &
+        #
+        await $supp_sd/$WIFI_DEV 500000
+        # check and store the process id
+        pidof sdcsupp 2>/dev/null >$supp_sd/pid \
+        || { msg ..error; return 2; }
+        msg .ok
+      fi
+      apmode=started
     fi
   fi
 
   # supplicant - enabled in /e/n/i -or- via cmdline
-  if [ ! -f "$apd_sd/pid" -a "${1/*host*/X}" != "X" -a "$1" != "manual" ] \
+  if [ ! -f "$supp_sd/pid" -a "${1/*host*/X}" != "X" -a "$1" != "manual" ] \
   && sdcsupp=$( sed -n "${stanza}{/[dp].supp/s/[ \t]*//;/^[^#]/{p;q}}}" $eni ) \
-  && [ -n "$sdcsupp" -o "${hostapd:-not}" != "started" ]
+  && [ -n "$sdcsupp" -o "${apmode:-not}" != "started" ]
   then
     # launch supplicant if exists and not already running
     if test -e "$SDC_SUPP" && ! ps |grep -q "[ ]$SDC_SUPP" && let n=17
@@ -320,20 +312,12 @@ wifi_stop() {
       let rv+=$?
     fi
 
-    ## terminate the hostap daemon by looking up its process id
-    if { read -r pid < $apd_sd/pid; } 2>/dev/null && let pid+0
-    then
-      rm -f $apd_sd/pid
-      wifi_kill_pid_of_service $pid hostapd
-      let rv+=$?
-    fi
-
     ## terminate event_mon
     killall event_mon 2>/dev/null \
          && msg "event_mon stopped"
 
-    ## return if only stopping sdcsupp or hostapd
-    test "${1/*supp*/X}" == "X" -o "${1/*host*/X}" == "X" \
+    ## return if only stopping sdcsupp
+    test "${1/*supp*/X}" == "X" \
       && { wifi_set_dev ${ifs/dormant/up}; return $rv; }
 
     ## disable the interface
@@ -398,7 +382,6 @@ eni=/etc/network/interfaces
 
 # socket directories
 supp_sd=/var/run/wpa_supplicant
-apd_sd=/var/run/hostapd
 
 module=${WIFI_MODULE##*/}
 usleep='busybox usleep'
@@ -440,7 +423,7 @@ case $1 in
     echo
     echo "Option:  (link service to invoke)"
     echo "  supp  ..target the supplicant"
-    echo "  host  ..target hostapd"
+    echo "  host  ..target AP mode"
     echo "  manual  ..no service"
     echo
     echo "Usage:"
