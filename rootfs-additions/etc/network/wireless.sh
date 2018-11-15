@@ -28,7 +28,7 @@ WIFI_PROFILES=/etc/summit/profiles.conf       ## sdc_cli profiles.conf
 
 ## monitor, supplicant and cli - comment out to disable . . .
 EVENT_MON=/usr/bin/event_mon
-SDC_SUPP=/usr/bin/sdcsupp
+SDC_SUPP=/usr/sbin/sdcsupp
 SDC_CLI=/usr/bin/sdc_cli
 
 ## supplicant options
