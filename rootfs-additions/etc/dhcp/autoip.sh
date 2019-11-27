@@ -12,7 +12,7 @@
 # OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 # PERFORMANCE OF THIS SOFTWARE.
 #
-# contact: ews-support@lairdtech.com
+# contact: support@lairdconnect.com
 
 # /etc/dhcp/autoip.sh
 # The 'option ap-identifier <mac> <ssid>' may be stored for a wireless link.

@@ -12,7 +12,7 @@
 # OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 # PERFORMANCE OF THIS SOFTWARE.
 #
-# contact: ews-support@lairdtech.com
+# contact: support@lairdconnect.com
 
 # /etc/network/wireless.sh - driver-&-firmware configuration for wb45n/wb50n
 # 20120520/20180522
