@@ -21,8 +21,7 @@
 usage() {
   [ "${1:0:5}" == "error" ] \
   && { echo -e "${2:+  $2\n}${3:+\nUsage:\n# $3\n}#"; rv=1; pause 2; }
-  cat <<-	\
-	usage-info-block
+  cat <<- usage-info-block
 	Configure and/or show interfaces.
 	Use settings in '/etc/network/interfaces', or from the command-line.
 	Works with a netlink daemon to maintain dhcp/static methods on-the-fly.
@@ -69,7 +68,7 @@ usage() {
 	# ifrc [flags..] [<iface>] [<action>] [<method> [<param=value> ...]]
 	#
 	usage-info-block
-  #
+
   exit ${rv:-0}
 }
 
@@ -99,11 +98,6 @@ test -s ${eni:=/etc/network/interfaces} \
 # check mii-diag utility (optional)
 test -x ${mii:=/usr/sbin/mii-diag} \
   || mii=
-
-# check resolv.conf configurator (optional)
-test -x ${conf_resolv:=/usr/sbin/conf-resolv} \
-  || conf_resolv=:\ $conf_resolv
-$conf_resolv -c
 
 # validate log-file-path
 [ ${#ifrc_Lfp} -gt 5 ] || ifrc_Lfp=/tmp/ifrc
@@ -283,22 +277,23 @@ show_interface_config_and_status() {
 }
 
 ifrc_dhcp_client() {
+  # type arg:  -4, -6
   # action arg: stop, start, release, renew, term, check
   # extra args: [<param=value> ...]
   # only do if inet4
-  test -z "${ipf/-4}" \
-    || return 0
-  export DHCP_PARAMS=log=$ifrc_Log${mpr:+ mpr=$mpr}${@#$1}
+  case "$ipf" in
+    "") ;;
+    -4) [ $1 == -4 ] || return 0 ;;
+    -6) [ $1 == -6 ] || return 0 ;;
+     *) return 0 ;;
+  esac
 
-  client_s=$1
   v=${vm//?/ -v} v=${v:-${mm:+-v}}
   # call a <client.sh> wrapper script in /etc/dhcp/..
-  # assume the busybox-udhcpc if client not specified
-  /etc/dhcp/${client:-udhcpc}.sh $v ${qm:+-q} -i$dev $1 2>>/tmp/ifrc/${dev}; rv=$?
-  rmdir ${ifrc_Lfp}/$dev.dhcp 2>/dev/null
+  # assume the dhcpcd if client not specified
+  DHCP_PARAMS=log=$ifrc_Log${mpr:+ mpr=$mpr}${@#$2} \
+    /etc/dhcp/${client:-dhcpcd}.sh $v ${qm:+-q} -i$dev $1 $2 2>>/tmp/ifrc/${dev}; rv=$?
 
-  # interrupt link-beat check, while if in-progress
-  rmdir ${ifrc_Lfp}/$dev.lbto 2>/dev/null
   return $rv
 }
 
@@ -768,25 +763,6 @@ then
       fi
     fi
 
-    if [ "${IFRC_METHOD/*f6=dhcp*/dhcp}" == "dhcp" ] || [ "${IFRC_METHOD/*f6=auto*/auto}" == "auto" ]
-    then
-      ## handle dhcpv6 ip-dcfg
-      /usr/sbin/dhclient6.sh release $dev
-    fi
-
-    ## handle dhcp ip-dcfg
-    if [ "${IFRC_METHOD/*f4=dhcp*/dhcp}" == "dhcp" ]
-    then
-      ifnl_event_action xx
-      if [ ! -d ${ifrc_Lfp}/$dev.dhcp ]
-      then
-        ifrc_dhcp_client release
-      else
-        msg1 "dhcp client lock exists, no act"
-      fi
-      break
-    fi
-
     ## handle static ip-dcfg
     ip -4 addr flush dev $dev 2>/dev/null
 
@@ -810,37 +786,20 @@ then
     { read -r zz < ${ifrc_Lfp}/$dev.dd; } 2>/dev/null \
     && { kill ${zz%%:*}; rm -f ${ifrc_Lfp}/$dev.dd ]; }
 
-    if [ "${IFRC_METHOD/*f6=dhcp*/dhcp}" == "dhcp" ] || [ "${IFRC_METHOD/*f6=auto*/auto}" == "auto" ]
-    then
-      if $phy80211
-      then
-        # this is likely a 'reconnect' or 'roam' related event
-        # if for AP with same SSID, then try dhcp-esa: refresh
-	usr/sbin/dhclient6.sh release $dev
-      fi
-	# renew failure is handled via re-up config...
-	usr/sbin/dhclient6.sh renew $dev
-    fi
+    ## handle dhcp ip-cfg renew
+    ## seems like dhcpcd should handle carrer up/down
+    #if $phy80211
+    #then
+    #  if [ "${IFRC_METHOD/*f6=dhcp*/dhcp}" == "dhcp" ] || [ "${IFRC_METHOD/*f6=auto*/auto}" == "auto" ]
+    #  then
+    #    ifrc_dhcp_client -6 renew
+    #  fi
 
-    ## handle dhcp ip-cfg renew/refresh
-    if [ "${IFRC_METHOD/f4=dhcp/dhcp}" == "dhcp" ]
-    then
-      if mkdir ${ifrc_Lfp}/$dev.dhcp 2>/dev/null
-      then
-        if $phy80211
-        then
-          # this is likely a 'reconnect' or 'roam' related event
-          # if for AP with same SSID, then try dhcp-esa: refresh
-          ifrc_dhcp_client refresh
-        fi
-        # renew failure is handled via re-up config...
-        ifrc_dhcp_client renew && IFRC_ACTION=xx
-      else
-        msg1 "dhcp client lock exists, no act"
-        IFRC_ACTION=xx
-      fi
-      break
-    fi
+    #  if [ "${IFRC_METHOD/*f4=dhcp*/dhcp}" == "dhcp" ] || [ "${IFRC_METHOD/*f4=auto*/auto}" == "auto" ]
+    #  then
+    #    ifrc_dhcp_client -4 renew
+    #  fi
+    #fi
     break
   done
 else #!via ifnl
@@ -961,10 +920,12 @@ case $IFRC_ACTION in
     cdt pre_dcfg6_do
     cdt pre_dcfg_do
 
-    /usr/sbin/dhclient6.sh stop
-    ifrc_dhcp_client stop
+    ifrc_dhcp_client -6 stop
+    ifrc_dhcp_client -4 stop
 
     sed '1cmp_cdt:' -i $ifrc_Log
+
+    fn resolvconf -d $dev -f
 
     # remove all relative entries from the routing table
     # the iface is still up and accessible to the IP layer
@@ -974,10 +935,12 @@ case $IFRC_ACTION in
     while ip rule del table $tn 2>/dev/null; do :;done
 
     fn ip ${vm:+-s} route flush cache
-    #fn ip link set dev $dev down
 
     cdt post_dcfg6_do
-    cdt post_dcfg_do &
+    cdt post_dcfg_do
+
+    fn ip link set dev $dev down
+    fn sysctl -qw net.ipv6.conf.$dev.disable_ipv6=1
 
     rmdir ${ifrc_Lfp}/$dev.* 2>/dev/null || :
     ;;
@@ -1218,23 +1181,7 @@ ifrcmp_validate_f6auto() {
   for x in $fmp
   do
     case ${x%%=*} in
-      f6|auto) ## method
-        x=f6=${x##*=}
-        ;;
-      *)
-        msg3 "ignoring param: [$x]"
-        continue
-    esac
-    ifrc_cache $x
-  done
-  ifrc_cache save
-}
-
-ifrcmp_validate_f6dhcp() {
-  for x in $fmp
-  do
-    case ${x%%=*} in
-      f6|dhcp) ## method
+      f6|auto|dhcp) ## method
         x=f6=${x##*=}
         ;;
       client) ## preferred client
@@ -1253,7 +1200,7 @@ ifrcmp_validate_f4dhcp() {
   for x in $fmp
   do
     case ${x%%=*} in
-      f4|dhcp) ## method
+      f4|dhcp|auto) ## method
         x=f4=${x##*=}
         ;;
       rip|requestip) ## specify ip to request from server (if supported)
@@ -1278,34 +1225,6 @@ ifrcmp_validate_f4dhcp() {
     ifrc_cache $x
   done
   ifrc_cache save
-}
-
-ifrcmp_await_f6dad() {
-  local idad_timer=50
-  while let --idad_timer ## deciseconds
-  do
-    [ -n "$( ip -6 -o addr list dev $dev | grep "link/ether" )" ] \
-    && [ -z "$( ip -6 -o addr list dev $dev | grep "scope global tentative" )" ] \
-    && [ -z "$( ip -6 -o addr list dev $dev | grep "scope link tentative" )" ] \
-    && break
-    usleep 87654
-  done
-}
-
-ifrcmp_await_f4dhcp() {
-  if [ -n "$to" ]
-  then
-    msg3 "awaiting dhcp offer.."
-    # exit non-zero of timeout waiting for ip-address
-    # there will not be any automatic restart nor netlink event
-    while let to--; do pause 1; gipa $dev && { to=0; break; }; done
-    if [ $to -lt 0 ]
-    then
-      ifrc_dhcp_client stop
-      msg "dhcp timeout"
-      false
-    fi
-  fi
 }
 
 ifrcmp_calc_nw_wc_bc() {
@@ -1342,37 +1261,6 @@ ifrcmp_cidr_to_ip_nm() {
     set -- ${maskpat:0:$px}${maskdgt:$mx:3}
   : ${nm:=${1:-0}.${2:-0}.${3:-0}.${4:-0}}
     unset px maskpat mx maskdgt
-  fi
-}
-
-ifrcmp_check_if_link() {
-  test -n "$ifnl_s" && return
-  mkdir ${ifrc_Lfp}/$dev.lbto
-
-  # await link-beat-time-out of 4s or 20s
-  $phy80211 && lbto=4000 || lbto=20000
-  let n=0
-  while [ $n -lt $lbto -a -d ${ifrc_Lfp}/$dev.lbto ]
-  do
-    if $phy80211
-    then
-      grep -qs up /sys/class/net/${dev}/operstate && break
-    else
-      grep -qs 1 /sys/class/net/${dev}/carrier && break
-    fi
-    let n+=200 && pause 0.2
-  done
-  [ $n -gt 0 ] && msg @. "  waited ${n}ms for ${dev} link"
-
-  rmdir ${ifrc_Lfp}/$dev.lbto 2>/dev/null
-
-  if $phy80211
-  then
-    grep -qs up /sys/class/net/${dev}/operstate \
-    || { msg @. "  ...not associated, deferring"; ifrcmp_exit 0; }
-  else
-    grep -qs 1 /sys/class/net/${dev}/carrier \
-    || { msg @. "  ...no cable/link, deferring"; ifrcmp_exit 0; }
   fi
 }
 
@@ -1413,42 +1301,35 @@ do unset ip nm nw wc bc ns gw to rip client scope metric weight
         && msg1 "  +++ ${fm/=/_} method/params" \
         || continue
 
-      test -d /proc/sys/net/ipv6 \
-        || { modprobe ipv6 && msg "  IPv6 support enabled"; }
-
       case ${fm#*=} in
-        auto) ## inet6 - StateLess Address AutoConfiguration
+        auto|dhcp) ## inet6 - Auto Configuration
           ifrcmp_validate_f6auto
-          # auto-configured on phy state change down->up and (re)enabled ipv6
-          # scope link-local (using mac) address/mask is: fe80::/10
-	  echo 1 > /proc/sys/net/ipv6/conf/$dev/accept_ra
-	  ifrcmp_await_f6dad || exec $0 -6 $dev dn
-	  /usr/sbin/dhclient6.sh start $dev
-	  ;;
+          fn sysctl -qw net.ipv6.conf.$dev.disable_ipv6=0
+          ifrc_dhcp_client -6 start
+          ;;
 
-	dhcp) ## inet6 - Dynamic Host Configuration Protocol v6
-	  echo 0 > /proc/sys/net/ipv6/conf/$dev/accept_ra
-	  ifrcmp_await_f6dad || exec $0 -6 $dev dn
-	  /usr/sbin/dhclient6.sh start $dev
-	  ;;
+        static) ## inet6 - Static method + optional params
+          ifrcmp_validate_f6static
+          # ip-addr-modify IP/NM
+          fn sysctl -qw net.ipv6.conf.$dev.disable_ipv6=0
+          xip=$( ip -6 -o addr show dev $dev scope global primary \
+                    |grep -om1 '[0-9a-f:]*/[0-9]*' )
 
-	static) ## inet6 - Static method + optional params
-	  ifrcmp_validate_f6static
-	  echo 0 > /proc/sys/net/ipv6/conf/$dev/accept_ra
-	  # ip-addr-modify IP/NM
-	  xip=$( ip -6 -o addr show dev $dev scope global primary \
-               |grep -om1 '[0-9a-f:]*/[0-9]*' )
-
-	  test -n "$xip" \
-            && fn ip -6 addr del $xip dev $dev
-          : && fn ip -6 addr add $ip/$nm ${scope:+scope $scope} dev $dev
+          test -n "$xip" \
+                  && fn ip -6 addr del $xip dev $dev
+                : && fn ip -6 addr add $ip/$nm ${scope:+scope $scope} dev $dev
 
           # default route
           if [ -n "$gw" ]
           then
             fn ip -6 route repl default via $gw dev $dev
           fi
-          ifrcmp_await_f6dad || exec $0 -6 $dev dn
+
+          # update w/validated nameserver
+          for n in $ns; do
+            res_conf="$res_conf nameserver $n\n"
+          done
+          [ -n "$res_conf"] && echo -en "$res_conf" | resolvconf -a "$dev.static6"
           ;;
 
         loopback) ## inet6 method + optional params
@@ -1457,8 +1338,9 @@ do unset ip nm nw wc bc ns gw to rip client scope metric weight
           # one address is reserved for the loopback
           # default reserved address is auto-configured
           : ${ip:=::1/128}
+          fn sysctl -qw net.ipv6.conf.$dev.disable_ipv6=0
           xip=$( ip -6 -o addr show dev $dev primary \
-                       |grep -om1 '[0-9a-f:]*/[0-9]*' )
+                      |grep -om1 '[0-9a-f:]*/[0-9]*' )
           if [ "$xip" != "$ip/${nm:+/$nm}" ]
           then
             fn ip addr add $ip${nm:+/$nm} dev $dev
@@ -1467,6 +1349,7 @@ do unset ip nm nw wc bc ns gw to rip client scope metric weight
 
         manual) ## inet6 method ...no params
           ifrcmp_validate_manual
+          fn sysctl -qw net.ipv6.conf.$dev.disable_ipv6=0
           # do nothing, configuration is to be handled manually
           # the unspecified address is all zeros: '::/0'
           true
@@ -1490,40 +1373,18 @@ do unset ip nm nw wc bc ns gw to rip client scope metric weight
       then
         # prepare for a new config
         test "${fm#*=}" != "dhcp" \
-          && ifrc_dhcp_client stop \
+          && ifrc_dhcp_client -4 stop \
           || fn ip -4 addr flush dev $dev
       fi
       case ${fm#*=} in
-        auto) ## inet4 method for ad-hoc networks
-          # maybe use avahi-autoipd to provide IPv4LL
-          # scope link-local address/mask is: 169.254.0.0/16
-          #fn ip route add 169.254.0.0/16 dev $dev metric 99
-          #fn ip route add default dev $dev metric 99
-          msg "IPv4LL config support n/a"
-          ;;
-
-        dhcp) ## inet4 method and optional params
-          test -d ${ifrc_Lfp}/$dev.dhcp \
-            && { msg1 "  client startup ...already in progress"; continue; }
+        auto|dhcp) ## inet4 method and optional params
 
           ifrcmp_validate_f4dhcp
 
           # (re)start client if necessary
-          test "$client_s" != "stop" \
-            && ifrc_dhcp_client renew && continue
-
-          ifrcmp_check_if_link
-          $conf_resolv -c &
-
-          mkdir ${ifrc_Lfp}/$dev.dhcp 2>/dev/null \
-             && { msg1 "  client ${re}start"; } \
-             || { msg1 "  client startup ...already in progress"; continue; }
-
-          ifrc_dhcp_client start \
-            ns=$ns\ rip=$rip\ metric=$metric\ weight=$weight
+          ifrc_dhcp_client -4 start \
+            ns=\"$ns\"\ rip=$rip\ metric=$metric\ weight=$weight
             # starting dhcp client w/shared options/settings
-
-          ifrcmp_await_f4dhcp
           ;;
 
         static) ## inet4 method + optional params
@@ -1587,7 +1448,10 @@ do unset ip nm nw wc bc ns gw to rip client scope metric weight
           fi
 
           # update w/validated nameserver
-          $conf_resolv -a $dev nameserver $ns &
+          for n in $ns; do
+            res_conf="$res_conf nameserver $n\n"
+          done
+          [ -n "$res_conf"] && echo -en "$res_conf" | resolvconf -a "$dev.static"
           ;;
 
         loopback) ## inet4 method + optional params
