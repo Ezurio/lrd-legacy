@@ -727,19 +727,28 @@ then
   ## nl event rules for status '  ->dn'
   while [ "${IFRC_STATUS##*->}" == "dn" ]
   do
-    ## handle a temporarily lost interface
-    if [ ! -f /sys/class/net/$dev/carrier ]
+    # The patches for ifplugd to support the dormant nl state during a roam were removed
+    # in the busybox 1.34.1 upgrade.
+    # With the new ifplugd code, a down and up event is sent to ifrc on every roam.
+    # On the down event detect whether or not the carrier is still up. If it is we 
+    # presume the roam happened and returned. If it is not, wait 2 seconds to ensure
+    # we aren't roaming before we deconfigure the interface
+    if [ ! -f /sys/class/net/$dev/carrier ] || [ `cat /sys/class/net/$dev/carrier` != "1" ]
     then
       ifnl_event_action -- iface\?
       msg1 $dev is gone, waiting 2s
       pause 2
-      if [ ! -f /sys/class/net/$dev/carrier ]
+      if [ ! -f /sys/class/net/$dev/carrier ] || [ `cat /sys/class/net/$dev/carrier` != "1" ]
       then
         msg1 $dev is gone, allowing deconfigure
       else
         ifnl_event_action xx
         msg1 ignoring dn event - iface is back
+        break
       fi
+    else
+      ifnl_event_action xx
+      msg1 ignoring dn event - iface is back
       break
     fi
 
