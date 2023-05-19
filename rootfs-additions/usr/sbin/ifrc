@@ -301,8 +301,9 @@ ifrc_netlink_daemon() {
   if [ -n "$ifnl_disable" ] \
   || [ "$1" == "stop" ]
   then
+    # find daemon instances for this interface if given
+    test -n "${dev}" || return 0
     prg="${ifnl##*/}"
-    # find daemon instances for this interface
     for pid in \
     $( ps ax |sed -n "/${dev}/s/^[ ]*\([0-9]*\).*[\/ ]\(${prg}\) -.*/\1_\2 /p" )
     do
@@ -1338,7 +1339,7 @@ do unset ip nm nw wc bc ns gw to rip client scope metric weight
           for n in $ns; do
             res_conf="$res_conf nameserver $n\n"
           done
-          [ -n "$res_conf"] && echo -en "$res_conf" | resolvconf -a "$dev.static6"
+          [ -n "$res_conf" ] && echo -en "$res_conf" | resolvconf -a "$dev.static6"
           ;;
 
         loopback) ## inet6 method + optional params
@@ -1460,7 +1461,7 @@ do unset ip nm nw wc bc ns gw to rip client scope metric weight
           for n in $ns; do
             res_conf="$res_conf nameserver $n\n"
           done
-          [ -n "$res_conf"] && echo -en "$res_conf" | resolvconf -a "$dev.static"
+          [ -n "$res_conf" ] && echo -en "$res_conf" | resolvconf -a "$dev.static"
           ;;
 
         loopback) ## inet4 method + optional params
