@@ -48,7 +48,7 @@ br_start() {
   $brctl setfd $bridge_iface $bridge_fd
 
   # disable multicast snooping
-  [ "$bridge_mcs" == "off" ] && \
+  [ "$bridge_mcs" = "off" ] && \
   fn 'echo 0 > /sys/devices/virtual/net/$bridge_iface/bridge/multicast_snooping'
 
   # disable bridge netfilter
@@ -77,6 +77,9 @@ br_start() {
   $ebtables -F
   if ${phy80211:-false}
   then
+    # (re)start supplicant with bridge interface name
+    wireless -b${bridge_iface} restart supp
+
     # wait n deciseconds for wireless setup to complete
     n=27; while [ -d /tmp/wifi^ ] && let n--; do usleep 98765; done
 
@@ -156,7 +159,7 @@ bridge_ports_check() {
   # check/start each port
   for dev in $bridge_ports
   do
-    test "${bridge_setup/auto*/a}" == "a" \
+    test "${bridge_setup/auto*/a}" = "a" \
       && $nis $dev start manual
 
     # allow 5s for a bridge port to setup
@@ -165,9 +168,6 @@ bridge_ports_check() {
     then
       # check if port is wireless device
       [ -d /sys/class/net/$dev/phy80211 ] && phy80211=true
-
-      # (re)start supplicant with bridge interface name
-      $phy80211 && wireless -b${bridge_iface} restart supp
 
       if [ ! -d /sys/devices/virtual/net/$bridge_iface/brif/$dev ]
       then
@@ -187,8 +187,8 @@ waitfor_interface() {
   while : wait increments of 10ms for address
   do
     { mac=; read -rs mac </sys/class/${1}/address; } 2>/dev/null
-    test "${mac/??:??:??:??:??:??/up}" == "up" && break
-    test "$3" == "down" && break
+    test "${mac/??:??:??:??:??:??/up}" = "up" && break
+    test "$3" = "down" && break
     test $n -lt $w && let n+=10 && usleep 9999 || break
   done
   test $n -ge 10 \
@@ -219,7 +219,7 @@ if [ -n "$1" ]
 then
   bridge_iface=$1 && shift
 fi
-if [ "${1%%_*}" == "bridge" ]
+if [ "${1%%_*}" = "bridge" ]
 then
   bridge_settings="$@"
 else
@@ -237,7 +237,7 @@ test -n "$bridge_settings" \
 [ -x /usr/sbin/brctl ] || { echo $self: brctl n/a; exit 1; }
 [ -x /sbin/ebtables ] || { echo $self: ebtables n/a; exit 1; }
 
-test "${bridge_setup/*-v*/v}" == "v" \
+test "${bridge_setup/*-v*/v}" = "v" \
   && verbose=true || verbose=false
 
 ebtables=fn\ 'ebtables'
