@@ -243,8 +243,6 @@ wifi_stop() {
   wifi_lock_wait
   if [ -f /sys/class/net/$WIFI_DEV/address ]
   then
-    { read -r ifs < /sys/class/net/$WIFI_DEV/operstate; } 2>/dev/null
-
     ## de-configure the interface
     # This step allows for a cleaner shutdown by flushing settings,
     # so packets don't use it.  Otherwise stale settings can remain.
@@ -262,6 +260,7 @@ wifi_stop() {
     killall event_mon 2>/dev/null \
          && msg "event_mon stopped"
 
+    read -r ifs < /sys/class/net/$WIFI_DEV/operstate 2>/dev/null
     ## return if only stopping sdcsupp
     test "${1/*supp*/X}" == "X" \
       && { wifi_set_dev ${ifs/dormant/up}; return $rv; }
