@@ -166,9 +166,6 @@ bridge_ports_check() {
     if waitfor_interface net/$dev 5000 up \
     || { echo \ \ device n/a: $dev; exit 1; }
     then
-      # check if port is wireless device
-      [ -d /sys/class/net/$dev/phy80211 ] && phy80211=true
-
       if [ ! -d /sys/devices/virtual/net/$bridge_iface/brif/$dev ]
       then
         $brctl addif $bridge_iface $dev \
@@ -177,6 +174,9 @@ bridge_ports_check() {
           || { echo \ \ ...bridge port n/a: $dev; exit 1; }
       fi
       fn "echo 1 > /proc/sys/net/ipv4/conf/$dev/proxy_arp"
+
+      # check if port is wireless device
+      [ -d /sys/class/net/$dev/phy80211 ] && phy80211=true
     fi
   done
 }
