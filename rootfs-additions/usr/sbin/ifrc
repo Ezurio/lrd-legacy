@@ -277,7 +277,7 @@ show_interface_config_and_status() {
 }
 
 ifrc_dhcp_client() {
-  # type arg:  -4, -6
+  # type arg:   -4, -6
   # action arg: stop, start, release, renew, term, check
   # extra args: [<param=value> ...]
   # only do if inet4
@@ -291,7 +291,7 @@ ifrc_dhcp_client() {
   v=${vm//?/ -v} v=${v:-${mm:+-v}}
   # call a <client.sh> wrapper script in /etc/dhcp/..
   # assume the dhcpcd if client not specified
-  DHCP_PARAMS=log=$ifrc_Log${mpr:+ mpr=$mpr}${@#$2} \
+  DHCP_PARAMS=log=$ifrc_Log${mpr:+ mpr=$mpr}${@:3} \
     /etc/dhcp/${client:-dhcpcd}.sh $v ${qm:+-q} -i$dev $1 $2 2>>/tmp/ifrc/${dev}; rv=$?
 
   return $rv
