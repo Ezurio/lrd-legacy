@@ -139,7 +139,8 @@ iface() {
       $tm $wifi $3 $4 || fail
       $up && $tm $ifrc $1 $2 $4 &
       $dn && wait
-      $up && ip6tables -t nat -S POSTROUTING 1 | grep -q MASQUERADE \
+      $up && [ -x /usr/sbin/ip6tables ] \
+        && ip6tables -t nat -S POSTROUTING 1 | grep -q MASQUERADE \
         && echo 0 > /proc/sys/net/ipv6/conf/wlan0/forwarding
       ;;
 
