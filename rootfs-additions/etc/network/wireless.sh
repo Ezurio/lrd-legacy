@@ -1,6 +1,6 @@
 #!/usr/bin/env ash
 
-# Copyright (c) 2018, Laird Connectivity
+# Copyright (c) 2018, Ezurio
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
 # copyright notice and this permission notice appear in all copies.
@@ -12,7 +12,7 @@
 # OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 # PERFORMANCE OF THIS SOFTWARE.
 #
-# contact: support@lairdconnect.com
+# contact: support@ezurio.com
 
 # /etc/network/wireless.sh - driver-&-firmware configuration for wb45n/wb50n
 # 20120520/20180522
