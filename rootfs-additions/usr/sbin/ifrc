@@ -612,6 +612,11 @@ test -n "$1" \
   && { IFRC_ACTION=$1; shift; } \
   || { [ -z $ifnl_disable ] && IFRC_ACTION=show; }
 
+# cfg-do hooks may call ifrc again.  Do not seed this run with the
+# parent interface's exported hook state.
+IFRC_METHOD=
+unset IFRC_SCRIPT
+
 # determine method, params and tasks to apply
 if [ "$IFRC_ACTION" == "up" ]
 then
@@ -698,6 +703,8 @@ elif \
    [ "$IFRC_ACTION" == "dn" ] \
 || [ "$IFRC_ACTION" == "down" ]
 then
+  IFRC_METHOD=${mp_cdt%% cdt{*}
+  IFRC_METHOD=${IFRC_METHOD% }
   if [ "${mp_cdt/*cdt{*/cdt}" == "cdt" ]
   then
     IFRC_SCRIPT=${mp_cdt/*cdt{/{}
